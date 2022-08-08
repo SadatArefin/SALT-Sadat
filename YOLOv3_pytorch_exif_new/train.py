@@ -17,33 +17,33 @@ def train(
         batch_size=16,
         accumulate=1,
         multi_scale=False,
-        freeze_backbone=False,      # TODO 所有层参数都学习更新？
+        freeze_backbone=False,      # TODO All layer parameters learn to update?
 ):
-    weights = 'weights' + os.sep    # 路径：weights\
-    latest = weights + 'latest.pt'  # 路径：weights\latest.pt
-    best = weights + 'best.pt'      # # 路径：weights\best.pt
+    weights = 'weights' + os.sep    # path: weights\
+    latest = weights + 'latest.pt'  # path: weights\latest.pt
+    best = weights + 'best.pt'      # path: weights\best.pt
     device = torch_utils.select_device()
 
     if multi_scale:
         print('enable multi-scalse training')
         img_size = 608  # initiate with maximum multi_scale size
     else:
-        torch.backends.cudnn.benchmark = True  # 不进行多尺度训练
+        torch.backends.cudnn.benchmark = True  # No multi-scale training
 
-    # 配置运行
-    train_path = parse_data_cfg(data_cfg)['train']  # train_path= data\train.txt，存放训练集路径
+    # Configure to run
+    train_path = parse_data_cfg(data_cfg)['train']  # train_path= data\train.txt，path to save training set
 
     # Initialize model
-    model = Darknet(cfg, img_size)  # 载入网络模型
+    model = Darknet(cfg, img_size)  # Load network model
 
     # Get dataloader
-    dataloader = LoadImagesAndLabelsAndExif(train_path, batch_size, img_size, augment=True)    # 创建dataloader，他包含训练集，label，batch等信息
+    dataloader = LoadImagesAndLabelsAndExif(train_path, batch_size, img_size, augment=True)    # create dataloader，It contains the training set，label，batch, other information
 
     lr0 = 0.0001  # initial learning rate
-    cutoff = -1  # 不要darknet53最后一层? backbone reaches to cutoff layer
+    cutoff = -1  # don't want darknet53 last layer? backbone reaches to cutoff layer
     start_epoch = 0
     best_loss = float('inf')
-    if resume:      # 如果从头训练
+    if resume:      # If you train from scratch
         print('start from scratch')
         print(torch.cuda.get_device_name(0))
         # print(torch.cuda.get_device_name(1))
@@ -69,7 +69,7 @@ def train(
 
         # del checkpoint  # current, saved
 
-    else:   # 如果不是从头，即迁移学习，载入预训练的参数：
+    else:   # if not from scratch，transfer learning，Load pretrained parameters：
         # Initialize model with backbone (optional)
         if cfg.endswith('yolov3.cfg'):
             print('using darknet53.conv.74')
@@ -89,14 +89,14 @@ def train(
         if cfg.endswith('yolov3-tiny-2cls.cfg'):
             print('using yolov3-tiny.conv.15')
             cutoff = load_darknet_weights(model, weights + 'yolov3-tiny.conv.15')
-        elif cfg.endswith('yolov3-tiny.cfg'):   # 对应模型，加载模型权重
+        elif cfg.endswith('yolov3-tiny.cfg'):   # corresponding model，Load model weights and biases
             print('using yolov3-tiny.conv.15')
             cutoff = load_darknet_weights(model, weights + 'yolov3-tiny.conv.15')
 
         # Set optimizer
-        optimizer = torch.optim.SGD(model.parameters(), lr=lr0, momentum=.9)    # 对model的parameters()采用SGD学习优化器
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr0, momentum=.9)    # tomodelofparameters()useSGDlearning optimizer
 
-    if torch.cuda.device_count() > 1:   # 并行训练
+    if torch.cuda.device_count() > 1:   # parallel training
         model = nn.DataParallel(model)
     model.to(device).train()
 
@@ -105,12 +105,12 @@ def train(
 
     # Start training
     t0 = time.time()
-    loss_list = []  # 画图用
-    # model_info(model)     # 模型信息
-    n_burnin = min(round(dataloader.nB / 5 + 1), 1000)  # 用于学习率的更新 number of burn-in batches
+    loss_list = []  # for drawing
+    # model_info(model)     # Model information
+    n_burnin = min(round(dataloader.nB / 5 + 1), 1000)  # Update for learning rate number of burn-in batches
     for epoch in range(epochs):
         model.train()
-        epoch += start_epoch    # 从最开始的epoch+这次的（如果之前训练过）
+        epoch += start_epoch    # from the very beginning epoch+this time（if previously trained）
 
         print(('\n%8s%12s' + '%10s' * 7) % (
             'Epoch', 'Batch', 'xy', 'wh', 'conf', 'cls', 'total', 'nTargets', 'time'))
@@ -119,14 +119,14 @@ def train(
         # scheduler.step()
 
         # Update scheduler (manual)
-        if epoch > 250:     # 250个epoch学习率衰为0.0001
+        if epoch > 250:     # 250 indivual epoch The learning rate decays to 0.0001
             lr = lr0 / 10
         else:
             lr = lr0
-        for x in optimizer.param_groups:    # x是优化器的训练参数
+        for x in optimizer.param_groups:    # x is the training parameter of the optimizer
             x['lr'] = lr
 
-        # 冻结 backbone 参数，不进行更新（只学习yolo分类层）（在epoch 0冻结, 在epoch 1解冻）
+        # Freeze backbone parameters，no update（Only learn the yolo classification layer）（Freeze at epoch 0, Thaw at epoch 1）
         if freeze_backbone and epoch < 2:
             for i, (name, p) in enumerate(model.named_parameters()):
                 if int(name.split('.')[1]) < cutoff:  # 冻结Darknet的层0-cutoff，只学习分类层参数 （yolo是75层，yolo tiny是15）
@@ -135,46 +135,46 @@ def train(
         ui = -1
         rloss = defaultdict(float)
 
-        # 修改
+        # Revise
         for i, (imgs, targets, exifs, _, _) in enumerate(dataloader):
-            # imgs：4*3*416*416,（batch=4）    targets：目标数*6 6代表：[哪幅图的，类，4个位置]
+            # imgs：4*3*416*416,（batch=4）    targets：Number of targets*6 6 represents：[Which picture, class, 4 positions]
             targets = targets.to(device)
-            nT = targets.shape[0]   # 目标数
+            nT = targets.shape[0]   # number of targets
             if nT == 0:  # if no targets continue
                 continue
 
-            # lr从0开始逐渐增大到lr0，之后不再变化(开始太大会发散，不过迁移学习不用担心） （不过，lr应该开始大，越来越小才对呀）
+            #lr starts from 0 and gradually increases to lr0，no change after(Start too big and spread out，But don't worry about transfer learning） （However, lr should start bigger and get smaller.）
             if (epoch == 0) and (i <= n_burnin):
                 lr = lr0 * (i / n_burnin) ** 4
                 # print(lr)
                 for x in optimizer.param_groups:
                     x['lr'] = lr
-            # Run model, 这里以yolo_tiny为例，它有两个尺度
-            # pred：2个元组，对应2个尺度： [4,3,13,13,85] , [4,3,26,26,85]
+            # Run model, Here is an example of yolo_tiny，it has two scales
+            # pred：2 tuples, corresponding to 2 scales： [4,3,13,13,85] , [4,3,26,26,85]
 
-            # 修改
+            # Revise
             exifs = exifs.to(device)
-            # print('测试输出exifs是否为单个：', exifs)
+            # print('Test if output exifs are single：', exifs)
             pred = model(imgs.to(device), exifs)
 
-            # Build targets，转换训练需要格式，选取正负样本。
-            # 包含5个元组，为txy, twh, tcls, tconf, indices
-            # 修改
+            # Build targets，Convert training needs format，Select positive and negative samples。
+            # Contains 5 tuples，for txy, twh, tcls, tconf, indices
+            # Revise
             target_list = build_targets(model, targets, pred)
 
-            # 计算 loss
+            # calculate loss
             loss, loss_dict = compute_loss(pred, target_list)   # loss.Size=1
             loss_list.append(loss.item())
 
             # Compute gradient
             loss.backward()
 
-            # 梯度累计多少次进行一次参数更新 Accumulate gradient for x batches before optimizing
+            # How many times the gradient is accumulated for a parameter update Accumulate gradient for x batches before optimizing
             if (i + 1) % accumulate == 0 or (i + 1) == len(dataloader):
                 optimizer.step()
                 optimizer.zero_grad()   # 梯度清零
 
-            # 计算每epoch平均误差并打印  Running epoch-means of tracked metrics
+            # Calculate the average error per epoch and print  Running epoch-means of tracked metrics
             ui += 1
             for key, val in loss_dict.items():
                 rloss[key] = (rloss[key] * ui + val) / (ui + 1)
@@ -193,11 +193,11 @@ def train(
                 dataloader.img_size = random.choice(range(10, 20)) * 32
                 # print('multi_scale img_size = %g' % dataloader.img_size)
 
-        # Update best loss,这里应该用验证集来验证吧，防止过拟合，但实际上整个程序验证集并未用到
+        # Update best loss,The validation set should be used here to verify it to prevent overfitting，But in fact the entire program validation set is not used
         if rloss['total'] < best_loss:
             best_loss = rloss['total']
 
-        # 保存训练结果
+        # save training results
         save = True
         if save:
             # Save latest checkpoint
@@ -215,8 +215,8 @@ def train(
             if epoch > 0 and epoch % 5 == 0:
                 torch.save(checkpoint, weights + 'backup%g.pt' % epoch)
 
-        # Calculate mAP 其实mAP在网络中并没用 (用测试集)
-        with torch.no_grad():   # TODO 看看,好像不太对,精确度和召回率同步了?
+        # Calculate mAP In fact, mAP is useless in the network (use test set)
+        with torch.no_grad():   # TODO Look, it doesn't seem right, precision and recall are synchronized?
             P, R, mAP = test.test(cfg, data_cfg, weights=latest, batch_size=batch_size, img_size=img_size, model=model)
             P_train, R_train, mAP_train = test_on_train.test_on_train(cfg, data_cfg, weights=latest, batch_size=batch_size, img_size=img_size, model=model)
 
@@ -226,7 +226,7 @@ def train(
             file.write(s + '%11.3g' * 3 % (P, R, mAP) + '\n')
     return loss_list
 
-# 迁移学习记得改cfg的class和卷积层输出3*(4+4+类)
+# Remember to change the class and convolutional layer output of cfg for migration learning 3*(4+4+class/type)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=300, help='number of epochs')
